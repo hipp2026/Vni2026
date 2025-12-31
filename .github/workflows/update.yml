@@ -1,0 +1,32 @@
+name: Update Dòng Tiền Data
+
+on:
+  schedule:
+    - cron: '*/10 * * * 1-5'  # Mỗi 10 phút, chỉ thứ 2-6 (ngày giao dịch)
+    - cron: '0 9,10,11,13,14 * * 1-5'  # Thêm lần lúc mở cửa và giữa phiên
+  workflow_dispatch:  # Cho phép chạy thủ công
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          
+      - name: Install vnstock
+        run: pip install -U vnstock
+        
+      - name: Run update script
+        run: python update_data.py
+        
+      - name: Commit and push if changed
+        run: |
+          git config --local user.email "actions@github.com"
+          git config --local user.name "GitHub Actions"
+          git add data.json
+          git commit -m "Update data.json - $(date +'%Y-%m-%d %H:%M')" || exit 0
+          git push
