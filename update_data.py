@@ -1,42 +1,43 @@
 import json
 from datetime import datetime
-from vnstock import Vnstock
+from vnstock import Trading, Listing
 
-# Tạo instance Vnstock
-stock_client = Vnstock().stock()
+# Lấy danh sách tất cả mã cổ phiếu (all symbols)
+listing = Listing()
+all_symbols = listing.all_symbols()  # Trả về list string các ticker
 
-# Lấy danh sách tất cả mã chứng khoán
-all_symbols = stock_client.listing().symbols_by_exchange()['ticker'].tolist()
+# Nếu list quá dài, có thể giới hạn top 500-1000 mã có GTGD cao (nhưng để all cũng ổn, vnstock xử lý tốt)
+# Hoặc lọc chỉ HOSE: all_symbols = [s for s in all_symbols if s.startswith('') ] nhưng để all cho toàn thị trường
 
-# Lấy bảng giá realtime cho toàn bộ mã (có thể nhiều, nhưng vnstock hỗ trợ tốt)
-df = stock_client.quote.price_board(all_symbols)
+# Lấy bảng giá realtime cho tất cả mã
+df = Trading().price_board(all_symbols)
 
-# Kiểm tra nếu df rỗng
+# Kiểm tra nếu df rỗng (ngoài giờ hoặc lỗi)
 if df.empty:
     print("Không lấy được dữ liệu - có thể ngoài giờ giao dịch hoặc lỗi tạm thời")
     exit()
 
-# Đổi tên cột cho dễ dùng (tùy phiên bản, cột có thể là 'ticker', 'price', 'volume', 'change_pct' hoặc tương tự)
-# Dựa trên vnstock mới: thường là 'ticker', 'close' (giá), 'lot' (volume lot), 'changePercent'
+# Các cột chính trong df (dựa trên phiên bản mới): thường có 'ticker', 'price' (giá khớp), 'volume' (lot), 'change_percent' hoặc 'change_pct'
+# In columns để debug lần đầu (xóa sau khi ổn)
+print("Columns:", df.columns.tolist())
+
+# Chuẩn hóa cột (tùy phiên bản có thể hơi khác, nhưng thường là):
 df.rename(columns={
     'ticker': 'symbol',
-    'close': 'price',
-    'lot': 'volume',
-    'changePercent': 'change_percent'
+    'price': 'price',  # giá hiện tại
+    'volume': 'volume',  # khối lượng lot
+    'change_percent': 'change_percent',  # hoặc 'change_pct' / 'pct_change'
 }, inplace=True)
 
-# Nếu cột không khớp, in ra để debug (chỉ lần đầu)
-print(df.columns)  # Xóa dòng này sau khi chạy ổn
+# Nếu cột % thay đổi tên khác, chỉnh thủ công sau khi thấy print columns
 
-# Tính GTGD tỷ VND (volume là lot = 100 cp)
+# Tính GTGD tỷ VND (volume lot x 100 cp x price)
 df['value'] = (df['price'] * df['volume'] * 100) / 1_000_000_000
 df['value'] = df['value'].round(1)
 df['change_percent'] = df['change_percent'].round(2)
 
-# Top 10 tiền vào (tăng >0)
+# Lọc và sort top 10
 top_in = df[df['change_percent'] > 0].sort_values(by='value', ascending=False).head(10)
-
-# Top 10 tiền ra (giảm <0)
 top_out = df[df['change_percent'] < 0].sort_values(by='value', ascending=False).head(10)
 
 # Chuyển sang list dict
@@ -49,7 +50,7 @@ data = {
     "top_out": df_to_list(top_out)
 }
 
-# Ghi data.json
+# Ghi file
 with open('data.json', 'w', encoding='utf-8') as f:
     json.dump(data, f, ensure_ascii=False, indent=2)
 
